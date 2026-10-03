@@ -1,8 +1,7 @@
 /**
  * One-shot production bootstrap, run on every deploy BEFORE the web server starts:
  *   1. applies the (idempotent) database schema
- *   2. loads the question bank if the database has none yet
- *   3. creates/updates the admin account if ADMIN_EMAIL + ADMIN_PASSWORD are set
+ *   2. creates/updates the admin account if ADMIN_EMAIL + ADMIN_PASSWORD are set
  * Safe to run repeatedly.
  */
 import "dotenv/config";
@@ -12,14 +11,6 @@ import { hashPassword, newId } from "../web/auth.js";
 
 // migrate.ts applies the schema at import time (top-level await), so it is done here.
 const db = getDb();
-
-const count = Number(((await db.prepare(`SELECT COUNT(*) AS n FROM questions`).get()) as any)?.n ?? 0);
-if (count === 0) {
-  console.log("Question bank is empty - seeding 1,200 original questions...");
-  await import("./seed_bulk.js");
-} else {
-  console.log(`Question bank already has ${count} questions - skipping seed.`);
-}
 
 const email = process.env.ADMIN_EMAIL?.trim().toLowerCase();
 const password = process.env.ADMIN_PASSWORD;

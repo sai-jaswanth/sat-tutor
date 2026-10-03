@@ -35,12 +35,14 @@ This version uses PostgreSQL at runtime; SQLite is no longer used by the applica
 ```bash
 npm install
 npm run migrate
-npm run seed
+npm run questions:import-json -- path/to/questions.json
 npm run admin:create -- admin@example.com StrongPassword123 "Admin"
 npm run web
 ```
 
-Open `http://localhost:3000`.
+The JSON import is optional and adds questions without clearing existing student data. Omit it if the database already has the question bank you want. Open `http://localhost:3000`.
+
+Production startup applies the schema and creates the configured admin account; it does not seed or replace questions. Import the fixed question JSON with `npm run questions:import-json -- path/to/questions.json` and `DATABASE_URL`/`DATABASE_SSL=true` set for the target PostgreSQL database. Automatic and npm-script question seeding are disabled so only explicitly imported questions are used.
 
 For local PostgreSQL, the repository includes a Docker Compose service:
 

@@ -51,8 +51,34 @@ You do NOT need to create tables; the app does it on first start.
 | `ADMIN_PASSWORD` | a strong password, 10+ characters |
 
 5. Click **Create Web Service**. First build takes a few minutes. In the logs you should see:
-`PostgreSQL schema applied successfully` → `seeding 1,200 original questions` → `Created admin account` → `SAT Tutor web app listening`.
+`PostgreSQL schema applied successfully` → `Created admin account` → `SAT Tutor web app listening`.
 6. If you didn't know the URL beforehand: copy it from the top of the Render page, put it in `APP_BASE_URL`, save (it redeploys).
+
+## Import your question bank without running a seed
+
+The production startup does **not** seed questions, and the seed npm commands are disabled. Import the JSON question bank directly into the same Neon database configured as `DATABASE_URL` in Render. The import is additive and safe to re-run: it skips question IDs already present and does not delete questions, attempts, or other student data. Questions with detected quality issues are imported with `human_review` status.
+
+From PowerShell, run this on your computer. Replace the JSON path with the location of your question file. The Neon URL is entered as hidden input and is not stored in the project:
+
+```powershell
+cd "C:\path\to\sat-tutor-platform-groq"
+$jsonPath = "C:\path\to\sat_question_bank_clean.json"
+$secure = Read-Host "Paste the Neon connection string (input hidden)" -AsSecureString
+$ptr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
+
+try {
+    $env:DATABASE_URL = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($ptr)
+    $env:DATABASE_SSL = "true"
+    npm.cmd run questions:import-json -- $jsonPath
+    if ($LASTEXITCODE -ne 0) { throw "Question import failed; check the error above." }
+}
+finally {
+    [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($ptr)
+    Remove-Item Env:DATABASE_URL, Env:DATABASE_SSL -ErrorAction SilentlyContinue
+}
+```
+
+Use the Neon URL for the same project and database as Render. After the import succeeds, refresh the public app. You can check the imported count in Render logs or run `npm run questions:count` locally with the same Neon connection string.
 
 ## STEP 4 — Test it like a stranger would
 Open the Render URL in a private/incognito window:

@@ -5,7 +5,6 @@
   "type": "module",
   "scripts": {
     "build": "tsc -p .",
-    "seed": "tsx scripts/seed.ts",
     "chat": "tsx agent/cli.ts",
     "server:student-data": "tsx servers/student-data/index.ts",
     "server:question-bank": "tsx servers/question-bank/index.ts",
@@ -18,8 +17,8 @@
     "test:strength": "tsx scripts/test_password_strength.ts",
     "test:sessions": "tsx scripts/test_session_management.ts",
     "test:deletion": "tsx scripts/test_account_deletion.ts",
-    "seed:bulk": "tsx scripts/seed_bulk.ts",
     "questions:count": "tsx scripts/question_stats.ts",
+    "questions:import-json": "tsx scripts/import_question_json.ts",
     "questions:occurrence": "tsx scripts/import_exam_occurrence.ts",
     "questions:backfill": "tsx scripts/backfill_question_metadata.ts",
     "questions:quarantine": "tsx scripts/quarantine_question_quality.ts",
