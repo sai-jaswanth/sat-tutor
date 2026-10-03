@@ -1,0 +1,35 @@
+# Render Blueprint: New + > Blueprint > pick your GitHub repo.
+# Database is external (Neon) so it doesn't expire; paste its connection string when prompted.
+services:
+  - type: web
+    name: sat-tutor
+    runtime: docker
+    plan: free
+    healthCheckPath: /healthz
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_SSL
+        value: "true"
+      - key: TRUST_PROXY
+        value: "true"
+      - key: MAX_TUTOR_AGENTS
+        value: "5"
+      - key: GROQ_MODEL
+        value: openai/gpt-oss-20b
+      - key: REQUIRE_EMAIL_VERIFICATION
+        value: "false"        # flip to "true" once your Resend domain is verified
+      - key: DATABASE_URL
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: APP_BASE_URL
+        sync: false            # e.g. https://sat-tutor.onrender.com
+      - key: RESEND_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        sync: false
+      - key: ADMIN_EMAIL
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false

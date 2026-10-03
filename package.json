@@ -1,0 +1,51 @@
+{
+  "name": "sat-tutor-agent",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p .",
+    "seed": "tsx scripts/seed.ts",
+    "chat": "tsx agent/cli.ts",
+    "server:student-data": "tsx servers/student-data/index.ts",
+    "server:question-bank": "tsx servers/question-bank/index.ts",
+    "server:grading": "tsx servers/grading/index.ts",
+    "web": "tsx web/server.ts",
+    "admin:create": "tsx scripts/create_admin.ts",
+    "test:web": "tsx scripts/test_web.ts",
+    "test:email": "tsx scripts/test_email_verification.ts",
+    "test:reset": "tsx scripts/test_password_reset.ts",
+    "test:strength": "tsx scripts/test_password_strength.ts",
+    "test:sessions": "tsx scripts/test_session_management.ts",
+    "test:deletion": "tsx scripts/test_account_deletion.ts",
+    "seed:bulk": "tsx scripts/seed_bulk.ts",
+    "questions:count": "tsx scripts/question_stats.ts",
+    "questions:occurrence": "tsx scripts/import_exam_occurrence.ts",
+    "questions:backfill": "tsx scripts/backfill_question_metadata.ts",
+    "questions:quarantine": "tsx scripts/quarantine_question_quality.ts",
+    "questions:validate": "tsx scripts/validate_questions.ts",
+    "test": "npm run test:web && npm run test:email && npm run test:reset && npm run test:strength && npm run test:sessions && npm run test:deletion && npx tsx scripts/test_mcp_smoke.ts && npm run questions:validate",
+    "migrate": "tsx scripts/migrate.ts",
+    "db:ping": "tsx scripts/db_ping.ts",
+    "start": "node dist/web/server.js",
+    "bootstrap": "node dist/scripts/bootstrap.js",
+    "start:prod": "node dist/scripts/bootstrap.js && node dist/web/server.js",
+    "bootstrap:dev": "tsx scripts/bootstrap.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "dotenv": "^16.6.1",
+    "mathjs": "^15.2.0",
+    "pg": "^8.16.3",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.9.0",
+    "@types/pg": "^8.23.1",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
