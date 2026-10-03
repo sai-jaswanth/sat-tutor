@@ -41,9 +41,14 @@ function normalizeAnswerType(raw: unknown): "mcq" | "grid_in" {
   return "mcq";
 }
 
-const inputPath = process.argv[2] || process.env.SAT_QUESTION_JSON_PATH;
+const args = process.argv.slice(2);
+const replaceExisting = args.includes("--replace");
+const inputPath = args.find((arg) => arg !== "--replace") || process.env.SAT_QUESTION_JSON_PATH;
 if (!inputPath) {
   throw new Error("Provide the JSON file path as an argument or set SAT_QUESTION_JSON_PATH.");
+}
+if (args.filter((arg) => arg !== "--replace").length > 1) {
+  throw new Error("Provide only one JSON file path.");
 }
 
 const resolvedPath = path.resolve(inputPath);
@@ -111,6 +116,17 @@ const questions = (items as RawQuestion[]).map((item, index) => {
 const db = getDb();
 try {
   const importQuestions = db.transaction(async (txDb) => {
+    if (replaceExisting) {
+      await txDb.prepare(`DELETE FROM practice_test_items`).run();
+      await txDb.prepare(`DELETE FROM practice_tests`).run();
+      await txDb.prepare(`DELETE FROM bookmarks`).run();
+      await txDb.prepare(`DELETE FROM study_plans`).run();
+      await txDb.prepare(`DELETE FROM daily_challenge_progress`).run();
+      await txDb.prepare(`DELETE FROM mastery`).run();
+      await txDb.prepare(`DELETE FROM attempts`).run();
+      await txDb.prepare(`DELETE FROM questions`).run();
+    }
+
     let inserted = 0;
     let heldForReview = 0;
 
@@ -145,7 +161,11 @@ try {
 
   const result = await importQuestions();
   console.log(`Imported ${result.inserted} of ${questions.length} questions from ${resolvedPath}.`);
-  console.log(`Skipped ${result.skipped} question IDs that were already present; no existing data was deleted.`);
+  if (replaceExisting) {
+    console.log("Replaced the question bank and cleared question-linked practice history; user accounts were preserved.");
+  } else {
+    console.log(`Skipped ${result.skipped} question IDs that were already present; no existing data was deleted.`);
+  }
   console.log(`Held ${result.heldForReview} imported questions for human review.`);
 } finally {
   await closeDb();

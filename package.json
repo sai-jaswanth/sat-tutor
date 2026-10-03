@@ -11,6 +11,7 @@
     "server:grading": "tsx servers/grading/index.ts",
     "web": "tsx web/server.ts",
     "admin:create": "tsx scripts/create_admin.ts",
+    "questions:replace-json": "tsx scripts/import_question_json.ts --replace",
     "test:web": "tsx scripts/test_web.ts",
     "test:email": "tsx scripts/test_email_verification.ts",
     "test:reset": "tsx scripts/test_password_reset.ts",

@@ -56,9 +56,15 @@ You do NOT need to create tables; the app does it on first start.
 
 ## Import your question bank without running a seed
 
-The production startup does **not** seed questions, and the seed npm commands are disabled. Import the JSON question bank directly into the same Neon database configured as `DATABASE_URL` in Render. The import is additive and safe to re-run: it skips question IDs already present and does not delete questions, attempts, or other student data. Questions with detected quality issues are imported with `human_review` status.
+The production startup does **not** seed questions, and the seed npm commands are disabled. Import the JSON question bank directly into the same Neon database configured as `DATABASE_URL` in Render. Questions with detected quality issues are imported with `human_review` status.
 
-From PowerShell, run this on your computer. Replace the JSON path with the location of your question file. The Neon URL is entered as hidden input and is not stored in the project:
+From PowerShell, run this on your computer. Replace the JSON path with the location of your question file. For a fresh database, use the additive command, which preserves existing data and skips question IDs already imported:
+
+```powershell
+npm.cmd run questions:import-json -- "C:\path\to\sat_question_bank_clean.json"
+```
+
+To replace an existing question bank, use `questions:replace-json` instead. **This deletes old questions and question-linked practice history (attempts, mastery, bookmarks, tests, and study plans); user accounts are preserved.** The Neon URL is entered as hidden input and is not stored in the project:
 
 ```powershell
 cd "C:\path\to\sat-tutor-platform-groq"
@@ -69,7 +75,7 @@ $ptr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
 try {
     $env:DATABASE_URL = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($ptr)
     $env:DATABASE_SSL = "true"
-    npm.cmd run questions:import-json -- $jsonPath
+    npm.cmd run questions:replace-json -- $jsonPath
     if ($LASTEXITCODE -ne 0) { throw "Question import failed; check the error above." }
 }
 finally {

@@ -42,7 +42,7 @@ npm run web
 
 The JSON import is optional and adds questions without clearing existing student data. Omit it if the database already has the question bank you want. Open `http://localhost:3000`.
 
-Production startup applies the schema and creates the configured admin account; it does not seed or replace questions. Import the fixed question JSON with `npm run questions:import-json -- path/to/questions.json` and `DATABASE_URL`/`DATABASE_SSL=true` set for the target PostgreSQL database. Automatic and npm-script question seeding are disabled so only explicitly imported questions are used.
+Production startup applies the schema and creates the configured admin account; it does not seed questions. Import a fixed question JSON with `npm run questions:import-json -- path/to/questions.json` to add without removing existing data, or use `npm run questions:replace-json -- path/to/questions.json` to replace the bank. Replacement clears question-linked practice history but preserves accounts. Automatic question seeding is disabled.
 
 For local PostgreSQL, the repository includes a Docker Compose service:
 
