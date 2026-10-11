@@ -83,32 +83,32 @@ server.tool(
     let studentAbility = 500;
 
     if (!targetSkill) {
-      const due = db
+      const due = (await db
         .prepare(
           `SELECT skill, ability FROM mastery
            WHERE student_id = ? AND sr_due_at <= datetime('now')
            ORDER BY sr_due_at ASC LIMIT 1`
         )
-        .get(student_id) as any;
+        .get(student_id)) as any;
 
       if (due) {
         targetSkill = due.skill;
         studentAbility = due.ability;
       } else {
-        const weakest = db
+        const weakest = (await db
           .prepare(
             `SELECT skill, ability FROM mastery WHERE student_id = ? ORDER BY ability ASC LIMIT 1`
           )
-          .get(student_id) as any;
+          .get(student_id)) as any;
         if (weakest) {
           targetSkill = weakest.skill;
           studentAbility = weakest.ability;
         }
       }
     } else {
-      const m = db
+      const m = (await db
         .prepare(`SELECT ability FROM mastery WHERE student_id = ? AND skill = ?`)
-        .get(student_id, targetSkill) as any;
+        .get(student_id, targetSkill)) as any;
       studentAbility = m?.ability ?? 500;
     }
 

@@ -263,11 +263,11 @@ export async function revokeAllUserSessions(userId: string, keepSessionId?: stri
 
 export async function destroySession(sessionId?: string | null) {
   if (!sessionId) return;
-  getDb().prepare(`DELETE FROM sessions WHERE id=?`).run(sessionId);
+  await getDb().prepare(`DELETE FROM sessions WHERE id=?`).run(sessionId);
 }
 
 export async function purgeSessions() {
-  getDb().prepare(`DELETE FROM sessions WHERE expires_at <= datetime('now')`).run();
+  await getDb().prepare(`DELETE FROM sessions WHERE expires_at <= datetime('now')`).run();
 }
 
 export async function deleteUserAccount(userId: string, passwordConfirm: string) {

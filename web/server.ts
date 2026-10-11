@@ -17,7 +17,7 @@ const isProd = process.env.NODE_ENV === "production";
 const TRUST_PROXY = process.env.TRUST_PROXY !== "false"; // hosts like Render/Railway/Fly sit behind a proxy
 const APP_BASE_URL = (process.env.APP_BASE_URL || "").replace(/\/+$/, "");
 const REQUIRE_EMAIL_VERIFICATION = process.env.REQUIRE_EMAIL_VERIFICATION !== "false";
-const MAX_TUTOR_AGENTS = Number(process.env.MAX_TUTOR_AGENTS || 20);
+const MAX_TUTOR_AGENTS = Number(process.env.MAX_TUTOR_AGENTS || 5);
 const rate = new Map<string, { count: number; resetAt: number }>();
 setInterval(() => { const now = Date.now(); for (const [k, v] of rate) if (v.resetAt <= now) rate.delete(k); }, 60_000).unref();
 
@@ -30,8 +30,9 @@ function clientIp(req: http.IncomingMessage) {
 }
 function publicBaseUrl(req: http.IncomingMessage) {
   if (APP_BASE_URL) return APP_BASE_URL;
+  const host = String(req.headers.host || "localhost:3000").replace(/[^a-zA-Z0-9.:-]/g, "");
   const proto = TRUST_PROXY ? String(req.headers["x-forwarded-proto"] || "http").split(",")[0].trim() : "http";
-  return `${proto}://${req.headers.host || "localhost:3000"}`;
+  return `${proto === "https" ? "https" : "http"}://${host}`;
 }
 function securityHeaders(res: http.ServerResponse) {
   res.setHeader("X-Content-Type-Options", "nosniff");
@@ -130,13 +131,20 @@ async function selectNext(studentId:string, skill?:string, section?:string, excl
   if (exclude.length) { sql+=` AND id NOT IN (${exclude.map(()=>'?').join(',')})`; params.push(...exclude); }
   sql+=` ORDER BY ABS(difficulty-?) ASC, RANDOM() LIMIT 1`; params.push(targetDifficulty);
   let row=await db.prepare(sql).get(...params) as any;
-  // If a very specific filter combination has no result, relax only the adaptive skill
+  // If a specific filter combination has no result, relax the auto-picked adaptive skill
   // rather than returning a misleading error. This keeps topic filters usable.
-  if (!row && targetSkill && (domain || difficulty || frequency || section)) {
-    let fallback=`SELECT * FROM questions WHERE validated=1 AND status='approved' AND skill=?`; const fp:any[]=[targetSkill];
+  if (!row && !skill && targetSkill) {
+    let fallback=`SELECT * FROM questions WHERE validated=1 AND status='approved'`; const fp:any[]=[];
     if (section) { fallback+=` AND section=?`; fp.push(section); }
     if (domain) { fallback+=` AND domain=?`; fp.push(domain); }
     if (frequency) { fallback+=` AND frequency_tier=?`; fp.push(frequency); }
+    if (exclude.length) { fallback+=` AND id NOT IN (${exclude.map(()=>'?').join(',')})`; fp.push(...exclude); }
+    fallback+=` ORDER BY ABS(difficulty-?) ASC, RANDOM() LIMIT 1`; fp.push(targetDifficulty);
+    row=await db.prepare(fallback).get(...fp) as any;
+  }
+  if (!row && (domain || frequency || targetSkill)) {
+    let fallback=`SELECT * FROM questions WHERE validated=1 AND status='approved'`; const fp:any[]=[];
+    if (section) { fallback+=` AND section=?`; fp.push(section); }
     if (exclude.length) { fallback+=` AND id NOT IN (${exclude.map(()=>'?').join(',')})`; fp.push(...exclude); }
     fallback+=` ORDER BY ABS(difficulty-?) ASC, RANDOM() LIMIT 1`; fp.push(targetDifficulty);
     row=await db.prepare(fallback).get(...fp) as any;
@@ -351,7 +359,10 @@ async function buildPracticeTest(studentId:string, mode:string) {
     for (const r of rows) items.push({ question_id:r.id, order_index:orderIndex++, module:mod.module });
   }
   const tx = db.transaction(async (txDb)=>{
-    await txDb.prepare(`INSERT INTO practice_tests (id,student_id,config_json,status) VALUES (?,?,?,?)`).run(id,studentId,JSON.stringify({mode,modules:cfg.modules}),'in_progress');
+    const nowIso = new Date().toISOString();
+    const moduleStarts: Record<string, string> = {};
+    if (cfg.modules[0]) moduleStarts[cfg.modules[0].module] = nowIso;
+    await txDb.prepare(`INSERT INTO practice_tests (id,student_id,config_json,status) VALUES (?,?,?,?)`).run(id,studentId,JSON.stringify({mode,modules:cfg.modules,module_starts:moduleStarts}),'in_progress');
     const ins = txDb.prepare(`INSERT INTO practice_test_items (test_id,question_id,order_index,module) VALUES (?,?,?,?)`);
     for (const it of items) await ins.run(id,it.question_id,it.order_index,it.module);
   });
@@ -539,7 +550,7 @@ async function getOrCreateDailyChallenge(studentId:string) {
 // free resources. Keyed by chat session id so different conversations
 // (or different students) never share message history.
 // ---------------------------------------------------------------------
-const AGENT_IDLE_MS = 15 * 60 * 1000;
+const AGENT_IDLE_MS = 5 * 60 * 1000;
 const agentPool = new Map<string, { agent: TutorAgent; lastUsed: number }>();
 setInterval(() => {
   const now = Date.now();
@@ -782,14 +793,18 @@ async function handle(req:http.IncomingMessage,res:http.ServerResponse) {
         const config=JSON.parse(item.config_json);
         const moduleIndex=config.modules.findIndex((module:any)=>module.module===item.module);
         if(moduleIndex<0) return json(res,400,{error:'Test module configuration is invalid'});
-        const elapsedMs=Date.now()-new Date(item.started_at).getTime();
-        const moduleStartMs=config.modules.slice(0,moduleIndex).reduce((total:number,module:any)=>total+(Number(module.minutes)||0)*60000,0);
-        const moduleEndMs=moduleStartMs+(Number(config.modules[moduleIndex].minutes)||0)*60000;
-        if(elapsedMs<moduleStartMs) return json(res,400,{error:'This module is not open yet'});
-        if(elapsedMs>=moduleEndMs) return json(res,400,{error:'This module time has expired'});
+        config.module_starts = config.module_starts || {};
+        if(!config.module_starts[item.module]) {
+          config.module_starts[item.module] = moduleIndex === 0 ? item.started_at : new Date().toISOString();
+          await db.prepare(`UPDATE practice_tests SET config_json=? WHERE id=?`).run(JSON.stringify(config), id);
+        }
+        const moduleStartTime = new Date(config.module_starts[item.module]).getTime();
+        const moduleDurationMs = (Number(config.modules[moduleIndex].minutes) || 0) * 60000;
+        const elapsedModuleMs = Date.now() - moduleStartTime;
+        if(elapsedModuleMs >= moduleDurationMs + 60000) return json(res,400,{error:'This module time has expired'});
         const q=await db.prepare(`SELECT * FROM questions WHERE id=?`).get(item.question_id) as any; const g=await grade(item.question_id,String(b.student_answer||''));
         await db.prepare(`UPDATE practice_test_items SET student_answer=?, is_correct=?, time_seconds=? WHERE test_id=? AND question_id=?`).run(String(b.student_answer||''),g.isCorrect?1:0,Number(b.time_seconds||0),id,item.question_id);
-        return json(res,200,{isCorrect:g.isCorrect});
+        return json(res,200,{isCorrect:g.isCorrect,moduleStarts:config.module_starts});
       }
       if(req.method==='POST' && url.pathname.match(/^\/api\/practice-test\/[^/]+\/finish$/)) {
         const id=url.pathname.split('/')[3];

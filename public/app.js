@@ -820,11 +820,14 @@ function getCurrentTestModuleIndex() {
 }
 
 function getTestModuleRemainingMs(moduleIndex = getCurrentTestModuleIndex()) {
-  if (!currentTest || currentTest.status !== 'in_progress' || !currentTest.startedAt || moduleIndex < 0) return 0;
-  const elapsed = getServerClockNow() - new Date(currentTest.startedAt).getTime();
-  const elapsedBeforeModule = currentTest.config.modules.slice(0, moduleIndex).reduce((sum, module) => sum + (Number(module.minutes) || 0) * 60 * 1000, 0);
-  const moduleDuration = (Number(currentTest.config.modules[moduleIndex].minutes) || 0) * 60 * 1000;
-  return Math.max(0, moduleDuration - Math.max(0, elapsed - elapsedBeforeModule));
+  if (!currentTest || currentTest.status !== 'in_progress' || moduleIndex < 0) return 0;
+  const mod = currentTest.config?.modules?.[moduleIndex];
+  if (!mod) return 0;
+  const startIso = currentTest.config?.module_starts?.[mod.module];
+  const startMs = startIso ? new Date(startIso).getTime() : (moduleIndex === 0 ? new Date(currentTest.startedAt).getTime() : getServerClockNow());
+  const elapsed = getServerClockNow() - startMs;
+  const moduleDuration = (Number(mod.minutes) || 0) * 60 * 1000;
+  return Math.max(0, moduleDuration - Math.max(0, elapsed));
 }
 
 function getTestModuleName(module) {
@@ -907,7 +910,11 @@ async function submitTestAnswer(answer){
   const item = currentTest.items[testItemIndex];
   const elapsed = Math.max(1,(performance.now()-testItemStartedAt)/1000);
   try {
-    await api(`/api/practice-test/${currentTest.id}/answer`, {method:'POST', body:JSON.stringify({question_id:item.question_id, student_answer:answer, time_seconds:elapsed})});
+    const res = await api(`/api/practice-test/${currentTest.id}/answer`, {method:'POST', body:JSON.stringify({question_id:item.question_id, student_answer:answer, time_seconds:elapsed})});
+    if (res?.moduleStarts) {
+      currentTest.config = currentTest.config || {};
+      currentTest.config.module_starts = res.moduleStarts;
+    }
     testItemIndex++; testItemStartedAt=performance.now();
     selectedTestAnswer=null;
     if(testItemIndex>=currentTest.items.length) { await finishTest(); return; }

@@ -17,7 +17,7 @@ server.tool(
     "tone/goals (e.g. mentioning days left until the test).",
   { student_id: z.string() },
   async ({ student_id }) => {
-    const row = db
+    const row = await db
       .prepare(`SELECT * FROM students WHERE id = ?`)
       .get(student_id);
     if (!row) {
@@ -41,13 +41,13 @@ server.tool(
     "strengths/weaknesses summary).",
   { student_id: z.string(), skill: z.string().optional() },
   async ({ student_id, skill }) => {
-    const rows = skill
+    const rows = await (skill
       ? db
           .prepare(`SELECT * FROM mastery WHERE student_id = ? AND skill = ?`)
           .all(student_id, skill)
       : db
           .prepare(`SELECT * FROM mastery WHERE student_id = ? ORDER BY ability ASC`)
-          .all(student_id);
+          .all(student_id));
     return { content: [{ type: "text", text: JSON.stringify(rows) }] };
   }
 );
@@ -189,7 +189,7 @@ server.tool(
     "planning conversation.",
   { student_id: z.string() },
   async ({ student_id }) => {
-    const rows = db
+    const rows = await db
       .prepare(
         `SELECT skill, ability, attempts, correct, sr_due_at
          FROM mastery

@@ -3,11 +3,6 @@ import "dotenv/config";
 
 const { Pool } = pg;
 
-const DATABASE_URL = process.env.DATABASE_URL;
-if (!DATABASE_URL) {
-  throw new Error("DATABASE_URL is required. Copy .env.example to .env and set it to your PostgreSQL connection string.");
-}
-
 export type QueryResultRow = Record<string, any>;
 
 function normalizeQuery(input: string, params: any[]): { text: string; values: any[] } {
@@ -25,8 +20,11 @@ function normalizeQuery(input: string, params: any[]): { text: string; values: a
   sql = sql.replace(/\?/g, () => `$${++index}`);
   sql = sql.replace(/datetime\('now','-([0-9]+) days'\)/gi, "CURRENT_TIMESTAMP - INTERVAL '$1 days'");
   sql = sql.replace(/datetime\('now'\)/gi, "CURRENT_TIMESTAMP");
+  // SQLite INSERT OR IGNORE → Postgres ignore-on-unique. Do not append this to
+  // every INSERT: that hid real failures (duplicate users, missing writes).
+  const insertOrIgnore = /^\s*INSERT\s+OR\s+IGNORE\s+INTO/i.test(sql);
   sql = sql.replace(/INSERT\s+OR\s+IGNORE\s+INTO/gi, "INSERT INTO");
-  if (/^\s*INSERT\s+INTO/i.test(sql) && !/\bON\s+CONFLICT\b/i.test(sql)) {
+  if (insertOrIgnore && !/\bON\s+CONFLICT\b/i.test(sql)) {
     sql = `${sql.trimEnd()} ON CONFLICT DO NOTHING`;
   }
   return { text: sql, values };
@@ -83,29 +81,46 @@ export class Database {
   }
 }
 
-const pool = new Pool({
-  connectionString: DATABASE_URL,
-  max: Number(process.env.DB_POOL_MAX || 10),
-  idleTimeoutMillis: Number(process.env.DB_IDLE_TIMEOUT_MS || 30_000),
-  connectionTimeoutMillis: Number(process.env.DB_CONNECTION_TIMEOUT_MS || 10_000),
-  ssl: process.env.DATABASE_SSL === "true" ? { rejectUnauthorized: false } : undefined,
-});
+let pool: pg.Pool | null = null;
+let db: Database | null = null;
 
-const db = new Database(pool);
+function getPool(): pg.Pool {
+  if (!pool) {
+    const DATABASE_URL = process.env.DATABASE_URL;
+    if (!DATABASE_URL) {
+      throw new Error("DATABASE_URL is required. Copy .env.example to .env and set it to your PostgreSQL connection string.");
+    }
+    pool = new Pool({
+      connectionString: DATABASE_URL,
+      max: Number(process.env.DB_POOL_MAX || 10),
+      idleTimeoutMillis: Number(process.env.DB_IDLE_TIMEOUT_MS || 30_000),
+      connectionTimeoutMillis: Number(process.env.DB_CONNECTION_TIMEOUT_MS || 10_000),
+      ssl: process.env.DATABASE_SSL === "true" ? { rejectUnauthorized: false } : undefined,
+    });
+    db = new Database(pool);
+  }
+  return pool;
+}
 
 export function getDb(): Database {
-  return db;
+  if (!db) getPool();
+  return db!;
 }
 
 export function getDbPath() {
-  return DATABASE_URL;
+  return process.env.DATABASE_URL || "";
 }
 
 export async function pingDb() {
-  const result = await pool.query("SELECT NOW() AS now");
+  const p = getPool();
+  const result = await p.query("SELECT NOW() AS now");
   return result.rows[0];
 }
 
 export async function closeDb() {
-  await pool.end();
+  if (pool) {
+    await pool.end();
+    pool = null;
+    db = null;
+  }
 }
