@@ -26,7 +26,8 @@ export function questionQualityIssues(question: QuestionContent): string[] {
   const choices = Array.isArray(question.choices) ? question.choices.map(choice => String(choice ?? '').trim()) : [];
 
   if (!['math', 'reading_writing'].includes(section)) issues.push('unknown section');
-  if (stem.length < 20) issues.push('question text is missing or too short');
+  const hasImage = /!\[[^\]]*\]\(img:[A-Za-z0-9]+\)/.test(stem); // a pasted picture of the question is valid content
+  if (stem.length < 20 && !hasImage) issues.push('question text is missing or too short');
   if (stem.length > 3500) issues.push('question text is too long to be a single SAT item');
   if (extractionArtifacts.test(stem)) issues.push('question text contains PDF extraction artifacts');
   if (/\bblank\s+Which choice\b/i.test(stem)) issues.push('an unfinished blank marker is mixed into the prompt');
