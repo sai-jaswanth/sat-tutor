@@ -40,8 +40,8 @@ function warn(id: string, msg: string) {
 }
 
 for (const r of activeRows) {
-  if (!r.stem || (String(r.stem).trim().length < 8 && !/img:[A-Za-z0-9]+/.test(String(r.stem)))) fail(r.id, "stem is missing or too short");
-  if (!r.explanation || (String(r.explanation).trim().length < 15 && !/img:[A-Za-z0-9]+/.test(String(r.explanation)))) fail(r.id, "explanation is missing or too short");
+  if (!r.stem || String(r.stem).trim().length < 8) fail(r.id, "stem is missing or too short");
+  if (!r.explanation || String(r.explanation).trim().length < 15) fail(r.id, "explanation is missing or too short");
   if (!KNOWN_SECTIONS.has(r.section)) fail(r.id, `unknown section '${r.section}'`);
   if (!KNOWN_STATUS.has(r.status)) fail(r.id, `unknown status '${r.status}'`);
   if (!Number.isInteger(r.difficulty) || r.difficulty < 1 || r.difficulty > 5) fail(r.id, `difficulty out of range: ${r.difficulty}`);
