@@ -78,3 +78,16 @@ Use `npm run questions:backfill` once for the original 8 seed questions, then `n
 The web app now provides practice filters for section, domain, skill, difficulty, and topic-frequency tier. Each practice result shows the submitted answer, verified correct answer, time, hints used, explanation, mastery update, and next review time.
 
 The admin Question Bank view supports search, filtering, question creation/editing, approval, and archiving. Previous-exam occurrence counts are treated as verified metadata only; generated/original questions are never presented as real past-exam questions unless occurrence data has been explicitly imported from a verified source corpus.
+
+
+## Editing questions in the browser (with images)
+Admin → Question Bank → **New question** / **Edit**. The editor has:
+- Question text, 4 choices (pick the correct one with the radio button) or a typed-answer mode, and a Solution.
+- **Images** in the question, in any choice, and in the solution: click *Add image*, **paste a screenshot** (Ctrl/⌘+V),
+  or drag a file in. Big images are downscaled in the browser; PNG/JPG/GIF/WebP up to 5 MB (SVG is rejected on purpose).
+- A live **Student preview** next to the form, and Ctrl/⌘+S to save.
+
+Images are stored in the `question_images` Postgres table (created by `npm run migrate`, and also created automatically
+when the web server starts), so they survive redeploys. Inside the text they appear as `![alt](img:<id>)`; that is the
+only markup supported. Students can click an image to enlarge it. The AI tutor and hint generator see `[image]` in its place,
+so write the solution text for image-based questions yourself rather than relying on auto-generated explanations.
