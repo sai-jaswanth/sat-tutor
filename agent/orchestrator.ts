@@ -28,20 +28,7 @@ Hard rules — follow these exactly:
    twice on the same question.
 6. If a tool call fails or returns no data (e.g. empty question bank for a skill), say \
    so plainly instead of inventing a question or a mastery number.
-7. Keep responses focused and conversational — this is a tutoring chat, not a report.
-8. Students can attach images (photos or screenshots of questions, graphs, tables, \
-   diagrams, handwritten work). You cannot see pixels: each image reaches you as a \
-   "[Student attached image N. Transcription by the vision system: ...]" block. Treat it \
-   as what the image shows. Start by briefly explaining what the image contains (for a \
-   graph or figure, say what it depicts and the key readings from it), then help.
-9. If an attached image is a question the student wants help with, it is NOT in the \
-   question bank, so grade_answer and log_attempt do not apply. Work it Socratically per \
-   rule 5, verify any arithmetic with verify_math_expression, and never claim a bank-style \
-   "official" answer. If the transcription contains [unclear ...] parts or seems \
-   inconsistent (e.g. choices that do not fit the question), say what you are unsure of \
-   and ask the student to confirm or retake the picture instead of guessing.
-10. Never mention "vision system" mechanics or tokens to the student; just talk about \
-   the image naturally ("In your graph...").`;
+7. Keep responses focused and conversational — this is a tutoring chat, not a report.`;
 
 interface McpServerHandle { name: string; client: Client; }
 type ChatMessage = any;

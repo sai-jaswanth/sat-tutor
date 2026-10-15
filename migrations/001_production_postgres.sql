@@ -186,25 +186,3 @@ CREATE TABLE IF NOT EXISTS practice_test_items (
   time_seconds double precision
 );
 CREATE INDEX IF NOT EXISTS idx_practice_test_items_test ON practice_test_items(test_id);
-
--- Images pasted/uploaded in the admin question editor (graphs, screenshots of
--- questions, diagrams). Stored in Postgres so they survive redeploys on hosts
--- with ephemeral disks. id = sha256 prefix of the bytes, so re-uploading the
--- same picture never creates a duplicate.
-CREATE TABLE IF NOT EXISTS question_images (
-  id text PRIMARY KEY,
-  content_type text NOT NULL,
-  data bytea NOT NULL,
-  size_bytes integer NOT NULL,
-  created_by text REFERENCES users(id) ON DELETE SET NULL,
-  created_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-
--- Cached vision-model transcriptions of images (student chat attachments), so the
--- text-only AI tutor can "see" them and each image is only analysed once.
-CREATE TABLE IF NOT EXISTS image_descriptions (
-  image_id text PRIMARY KEY REFERENCES question_images(id) ON DELETE CASCADE,
-  description text NOT NULL,
-  model text,
-  created_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
