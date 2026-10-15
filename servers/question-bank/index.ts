@@ -20,8 +20,9 @@ function serializeQuestion(row: any, revealAnswer: boolean) {
     section: row.section,
     skill: row.skill,
     difficulty: row.difficulty,
-    stem: row.stem,
-    choices: row.choices_json ? JSON.parse(row.choices_json) : null,
+    // Pictures can't be seen by the tutor model; tell it one exists instead of showing a raw token.
+    stem: String(row.stem ?? "").replace(/!\[[^\]]*\]\(img:[A-Za-z0-9]+\)/g, "[image]"),
+    choices: row.choices_json ? (JSON.parse(row.choices_json) as string[]).map((c) => String(c).replace(/!\[[^\]]*\]\(img:[A-Za-z0-9]+\)/g, "[image]")) : null,
     answer_type: row.answer_type,
     domain: row.domain,
     frequency_tier: row.frequency_tier,

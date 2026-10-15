@@ -8,6 +8,8 @@ import { createSession, createVerificationToken, createPasswordResetToken, delet
 import { sendVerificationEmail, sendPasswordResetEmail } from "./email.js";
 import { TutorAgent } from "../agent/orchestrator.js";
 import { evaluate as mathEvaluate } from "mathjs";
+import crypto from "node:crypto";
+import { expandImagesForTutor, MAX_CHAT_IMAGES } from "./vision.js";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const PUBLIC = path.resolve(process.cwd(), "public"); // run from the project root (WORKDIR /app in Docker)
@@ -153,9 +155,64 @@ async function selectNext(studentId:string, skill?:string, section?:string, excl
   return { selection_reasoning:{targetSkill,studentAbility:ability,targetDifficulty,filters:{section,domain,difficulty,frequency}}, question:cleanQuestion(row,false) };
 }
 
+
+// ---------------------------------------------------------------------
+// Question images. Questions/choices/solutions embed pictures with the token
+// ![alt](img:<id>) inside their normal text fields; bytes live in question_images.
+// ---------------------------------------------------------------------
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+const IMAGE_TOKEN = /!\[[^\]]*\]\(img:[A-Za-z0-9]+\)/g;
+function plainText(text: unknown) { return String(text ?? "").replace(IMAGE_TOKEN, "[image]"); }
+async function rawBody(req: http.IncomingMessage, max: number) {
+  const chunks: Buffer[] = []; let size = 0;
+  for await (const chunk of req) {
+    size += (chunk as Buffer).length;
+    if (size > max) throw Object.assign(new Error(`Image is too large (max ${Math.round(max/1024/1024)} MB)`), { status: 413 });
+    chunks.push(chunk as Buffer);
+  }
+  return Buffer.concat(chunks);
+}
+// Trust the bytes, not the client-declared type. SVG is deliberately NOT allowed (script injection).
+function sniffImageType(b: Buffer): string | null {
+  if (b.length > 8 && b[0]===0x89 && b[1]===0x50 && b[2]===0x4e && b[3]===0x47) return "image/png";
+  if (b.length > 3 && b[0]===0xff && b[1]===0xd8 && b[2]===0xff) return "image/jpeg";
+  if (b.length > 6 && b.subarray(0,3).toString("latin1")==="GIF") return "image/gif";
+  if (b.length > 12 && b.subarray(0,4).toString("latin1")==="RIFF" && b.subarray(8,12).toString("latin1")==="WEBP") return "image/webp";
+  return null;
+}
+async function ensureImageTable() {
+  await getDb().prepare(`CREATE TABLE IF NOT EXISTS question_images (id text PRIMARY KEY, content_type text NOT NULL, data bytea NOT NULL, size_bytes integer NOT NULL, created_by text REFERENCES users(id) ON DELETE SET NULL, created_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP)`).run();
+  await getDb().prepare(`CREATE TABLE IF NOT EXISTS image_descriptions (image_id text PRIMARY KEY REFERENCES question_images(id) ON DELETE CASCADE, description text NOT NULL, model text, created_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP)`).run();
+}
+async function handleImageUpload(req: http.IncomingMessage, res: http.ServerResponse, userId: string, maxBytes: number) {
+  let bytes: Buffer; try { bytes = await rawBody(req, maxBytes); } catch (e: any) { return json(res, e.status || 400, { error: e.message }); }
+  const type = sniffImageType(bytes); if (!type) return json(res, 400, { error: "Unsupported file. Use a PNG, JPG, GIF or WebP image." });
+  const id = crypto.createHash("sha256").update(bytes).digest("hex").slice(0, 24);
+  await getDb().prepare(`INSERT INTO question_images (id,content_type,data,size_bytes,created_by) VALUES (?,?,?,?,?) ON CONFLICT (id) DO NOTHING`).run(id, type, bytes, bytes.length, userId);
+  await audit(userId, "upload", "question_image", id, { bytes: bytes.length, type });
+  return json(res, 201, { id, url: `/api/images/${id}`, token: `![image](img:${id})` });
+}
+function validateQuestionPayload(q: any): string | null {
+  const text = (v: unknown) => String(v ?? "").trim();
+  if (!["math","reading_writing"].includes(text(q.section))) return "Section must be Math or Reading & Writing.";
+  if (!text(q.skill)) return "Skill is required.";
+  const d = Number(q.difficulty); if (!Number.isInteger(d) || d < 1 || d > 5) return "Difficulty must be 1-5.";
+  if (!text(q.stem)) return "The question needs text or an image.";
+  if (!text(q.explanation)) return "The solution needs text or an image.";
+  if (!text(q.correct_answer)) return "Correct answer is required.";
+  if (Array.isArray(q.choices) && q.choices.length) {
+    if (q.choices.length !== 4) return "Multiple-choice questions need exactly 4 choices.";
+    if (q.choices.some((c: unknown) => !text(c))) return "Every choice needs text or an image.";
+    if (!/^[A-D]$/.test(text(q.correct_answer).toUpperCase())) return "Pick which choice (A-D) is correct.";
+  } else if (!/^-?(?:\d+(?:\.\d+)?|\d+\/\d+)$/.test(text(q.correct_answer))) {
+    return "Student-entered answers must be a number or simple fraction (e.g. 12, -3.5, 7/2).";
+  }
+  return null;
+}
+
 function hintForQuestion(row:any, level:number) {
-  const clean = String(row.explanation || '').replace(/\s+/g,' ').trim();
-  const stem = String(row.stem || '').replace(/\s+/g,' ').trim();
+  const clean = plainText(row.explanation || '').replace(/\s+/g,' ').trim();
+  const stem = plainText(row.stem || '').replace(/\s+/g,' ').trim();
   if (level === 1) return {level:1,text:`Identify exactly what the question is asking, then write down the key relationship, rule, or quantity you need. ${stem.length>140?'Focus on the final sentence of the question.':''}`};
   if (level === 2) return {level:2,text:`Set up the problem before calculating. Look for the information that connects directly to the target; avoid choices that require assumptions the question never gives.`};
   return {level:3,text:`Use the governing rule or setup behind the solution. ${clean ? `Your next step should move toward the idea used in the explanation: ${clean.slice(0,180)}${clean.length>180?'…':''}` : 'Work backward from what the answer must represent.'}`};
@@ -181,8 +238,8 @@ async function generateQuestionExplanations(questions:any[]) {
       id: question.id,
       section: question.section,
       skill: question.skill,
-      stem: question.stem,
-      choices: question.choices_json ? JSON.parse(question.choices_json) : question.choices,
+      stem: plainText(question.stem),
+      choices: (question.choices_json ? JSON.parse(question.choices_json) : question.choices)?.map?.(plainText) ?? null,
       answer_type: question.answer_type,
       correct_answer: question.correct_answer,
     }));
@@ -571,7 +628,7 @@ async function getTutorAgent(sessionId: string, studentId: string) {
   const agent = new TutorAgent(process.env.GROQ_API_KEY, studentId);
   await agent.connectServers();
   const prior = await getDb().prepare(`SELECT role,content FROM chat_messages WHERE session_id=? ORDER BY id ASC`).all(sessionId) as any[];
-  if (prior.length) agent.loadHistory(prior);
+  if (prior.length) agent.loadHistory(await Promise.all(prior.map(async (m) => ({ role: m.role, content: await expandImagesForTutor(m.content, { generate: false }) }))));
   agentPool.set(sessionId, { agent, lastUsed: Date.now() });
   return agent;
 }
@@ -730,16 +787,24 @@ async function handle(req:http.IncomingMessage,res:http.ServerResponse) {
       }
       if(req.method==='POST' && url.pathname==='/api/chat') {
         if(!process.env.GROQ_API_KEY) return json(res,503,{error:'AI tutor is not configured. Set GROQ_API_KEY on the server.'});
-        const b:any=await body(req); const text=String(b.message||'').trim(); if(!text)return json(res,400,{error:'Message is required'});
+        const b:any=await body(req); let text=String(b.message||'').trim();
+        const imageIds:string[]=[...new Set((Array.isArray(b.images)?b.images:[]).map((x:any)=>String(x)).filter((x:string)=>/^[A-Za-z0-9]+$/.test(x)))] as string[];
+        if(imageIds.length>MAX_CHAT_IMAGES) return json(res,400,{error:`You can attach up to ${MAX_CHAT_IMAGES} images per message.`});
+        for(const id of imageIds) if(!await db.prepare(`SELECT 1 FROM question_images WHERE id=?`).get(id)) return json(res,400,{error:'An attached image was not found. Please attach it again.'});
+        if(!text&&!imageIds.length)return json(res,400,{error:'Message is required'});
+        if(!text) text='Please explain what is in this image. If it is a question, help me work through it.';
+        // Images travel inside the stored message as tokens so the chat history can show them.
+        const storedText=[text,...imageIds.map(id=>`![image](img:${id})`)].join('\n');
+        let tutorText:string; try { tutorText=await expandImagesForTutor(storedText,{generate:true}); } catch(e:any){ return json(res,502,{error:e.message||'Could not read the attached image.'}); }
         const sessionId=String(b.session_id||newId('chat')); let session=await db.prepare(`SELECT * FROM chat_sessions WHERE id=? AND student_id=?`).get(sessionId,student.id) as any;
-        if(!session){ await db.prepare(`INSERT INTO chat_sessions (id,student_id,title) VALUES (?,?,?)`).run(sessionId,student.id,text.slice(0,60)); session=await db.prepare(`SELECT * FROM chat_sessions WHERE id=?`).get(sessionId); }
-        await db.prepare(`INSERT INTO chat_messages (session_id,role,content) VALUES (?,?,?)`).run(sessionId,'user',text);
+        if(!session){ await db.prepare(`INSERT INTO chat_sessions (id,student_id,title) VALUES (?,?,?)`).run(sessionId,student.id,(imageIds.length&&!String(b.message||'').trim()?'Image question':text).slice(0,60)); session=await db.prepare(`SELECT * FROM chat_sessions WHERE id=?`).get(sessionId); }
+        await db.prepare(`INSERT INTO chat_messages (session_id,role,content) VALUES (?,?,?)`).run(sessionId,'user',storedText);
         const agent=await getTutorAgent(sessionId, student.id); // pooled per session — avoids respawning 3 MCP subprocesses on every message
         // If the student is chatting while looking at a specific practice question,
         // tell the model which one so it can ground hints/explanations in it
         // (via get_question / grade_answer) instead of guessing what "this question" means.
         const contextNote = b.current_question_id ? `[Context: the student is currently looking at question_id="${String(b.current_question_id)}". Use get_question to see it if relevant to their message.]\n` : '';
-        const reply=await agent.sendMessage(contextNote + text);
+        const reply=await agent.sendMessage(contextNote + tutorText);
         await db.prepare(`INSERT INTO chat_messages (session_id,role,content,created_at) VALUES (?,?,?,datetime('now'))`).run(sessionId,'assistant',reply);
         await db.prepare(`UPDATE chat_sessions SET updated_at=datetime('now') WHERE id=?`).run(sessionId);
         return json(res,200,{session_id:sessionId,reply});
@@ -826,8 +891,22 @@ async function handle(req:http.IncomingMessage,res:http.ServerResponse) {
         catch(e:any) { return json(res,502,{error:e.message||'Could not generate test explanations.'}); }
       }
 
+      // --- Student photo/screenshot uploads for the AI tutor (4 MB, 15 per minute) ---
+      if(req.method==='POST' && url.pathname==='/api/chat/images') {
+        if(!allowRate(`chatimg:${u.id}`,15)) return json(res,429,{error:'Too many image uploads. Please wait a minute.'});
+        return await handleImageUpload(req,res,u.id,4*1024*1024);
+      }
+      // --- Question images (served to any signed-in user; bytes are immutable per id) ---
+      if(req.method==='GET' && url.pathname.match(/^\/api\/images\/[A-Za-z0-9]+$/)) {
+        const row=await db.prepare(`SELECT content_type,data FROM question_images WHERE id=?`).get(url.pathname.split('/').pop()) as any;
+        if(!row) return json(res,404,{error:'Image not found'});
+        res.writeHead(200,{'content-type':row.content_type,'content-length':row.data.length,'cache-control':'private, max-age=31536000, immutable','content-disposition':'inline'});
+        return res.end(row.data);
+      }
+
       if(url.pathname.startsWith('/api/admin/')) {
         if(u.role!=='admin') return json(res,403,{error:'Admin access required'});
+        if(req.method==='POST' && url.pathname==='/api/admin/images') return await handleImageUpload(req,res,u.id,MAX_IMAGE_BYTES);
         if(req.method==='GET' && url.pathname==='/api/admin/stats'){
           const users=await db.prepare(`SELECT COUNT(*) c FROM users WHERE role='student'`).get() as any;
           const active=await db.prepare(`SELECT COUNT(DISTINCT student_id) c FROM attempts WHERE created_at >= datetime('now','-7 days')`).get() as any;
@@ -882,10 +961,11 @@ async function handle(req:http.IncomingMessage,res:http.ServerResponse) {
         if(req.method==='GET' && url.pathname.startsWith('/api/admin/questions/')){
           const id=url.pathname.split('/').pop(); const r=await db.prepare(`SELECT * FROM questions WHERE id=?`).get(id) as any; if(!r)return json(res,404,{error:'Question not found'}); return json(res,200,{...r,choices:r.choices_json?JSON.parse(r.choices_json):null,concept_tags:r.concept_tags_json?JSON.parse(r.concept_tags_json):[]});
         }
-        if(req.method==='POST' && url.pathname==='/api/admin/questions'){ const b:any=await body(req); const id=String(b.id||newId('q')); await db.prepare(`INSERT INTO questions (id,section,domain,skill,difficulty,stem,choices_json,correct_answer,answer_type,explanation,source,validated,status,frequency_tier,previous_exam_occurrence_count,previous_exam_occurrence_basis,concept_tags_json,created_by) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(id,b.section,b.domain||null,b.skill,Number(b.difficulty),b.stem,b.choices?JSON.stringify(b.choices):null,b.correct_answer,b.answer_type||'mcq',b.explanation,b.source||'admin',Number(b.validated??1),b.status||'approved',b.frequency_tier||'unknown',b.previous_exam_occurrence_count??null,b.previous_exam_occurrence_basis??null,b.concept_tags?JSON.stringify(b.concept_tags):null,u.id); await audit(u.id,'create','question',id); return json(res,201,{id}); }
+        if(req.method==='POST' && url.pathname==='/api/admin/questions'){ const b:any=await body(req); const invalid=validateQuestionPayload(b); if(invalid) return json(res,400,{error:invalid}); const id=String(b.id||newId('q')); await db.prepare(`INSERT INTO questions (id,section,domain,skill,difficulty,stem,choices_json,correct_answer,answer_type,explanation,source,validated,status,frequency_tier,previous_exam_occurrence_count,previous_exam_occurrence_basis,concept_tags_json,created_by) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(id,b.section,b.domain||null,b.skill,Number(b.difficulty),b.stem,b.choices?JSON.stringify(b.choices):null,b.correct_answer,b.answer_type||'mcq',b.explanation,b.source||'admin',Number(b.validated??1),b.status||'approved',b.frequency_tier||'unknown',b.previous_exam_occurrence_count??null,b.previous_exam_occurrence_basis??null,b.concept_tags?JSON.stringify(b.concept_tags):null,u.id); await audit(u.id,'create','question',id); return json(res,201,{id}); }
         if(req.method==='PATCH' && url.pathname.startsWith('/api/admin/questions/')){
           const id=url.pathname.split('/').pop() as string; const existing=await db.prepare(`SELECT * FROM questions WHERE id=?`).get(id) as any; if(!existing)return json(res,404,{error:'Question not found'}); const b:any=await body(req);
           const merged:any={...existing,...b}; const choices = b.choices!==undefined ? b.choices : (existing.choices_json?JSON.parse(existing.choices_json):null);
+          if(b.stem!==undefined||b.explanation!==undefined||b.choices!==undefined||b.correct_answer!==undefined||b.section!==undefined){ const invalid=validateQuestionPayload({...merged,choices}); if(invalid) return json(res,400,{error:invalid}); }
           await db.prepare(`UPDATE questions SET section=?,domain=?,skill=?,difficulty=?,stem=?,choices_json=?,correct_answer=?,answer_type=?,explanation=?,source=?,validated=?,status=?,frequency_tier=?,previous_exam_occurrence_count=?,previous_exam_occurrence_basis=?,concept_tags_json=?,reviewed_by=?,updated_at=datetime('now') WHERE id=?`).run(merged.section,merged.domain,merged.skill,Number(merged.difficulty),merged.stem,choices?JSON.stringify(choices):null,merged.correct_answer,merged.answer_type||(choices?'mcq':'grid-in'),merged.explanation,merged.source||'admin',Number(merged.validated??existing.validated),merged.status||existing.status,merged.frequency_tier||existing.frequency_tier,merged.previous_exam_occurrence_count??existing.previous_exam_occurrence_count,merged.previous_exam_occurrence_basis??existing.previous_exam_occurrence_basis,merged.concept_tags?JSON.stringify(merged.concept_tags):existing.concept_tags_json,u.id,id); await audit(u.id,'update','question',id); return json(res,200,{ok:true}); }
         return json(res,404,{error:'Admin route not found'});
       }
@@ -895,6 +975,7 @@ async function handle(req:http.IncomingMessage,res:http.ServerResponse) {
   return sendStatic(res,url.pathname);
 }
 
+await ensureImageTable().catch((e)=>console.error("Could not ensure question_images table (run npm run migrate):",e.message));
 const server=http.createServer((req,res)=>{ handle(req,res).catch((e)=>{ console.error(e); if(!res.headersSent) json(res,500,{error:"Something went wrong"}); else res.end(); }); });
 server.listen(PORT,HOST,()=>console.log(`SAT Tutor web app listening on ${HOST}:${PORT}`));
 function shutdown(){
