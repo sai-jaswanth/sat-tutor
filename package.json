@@ -24,6 +24,7 @@
     "questions:backfill": "tsx scripts/backfill_question_metadata.ts",
     "questions:quarantine": "tsx scripts/quarantine_question_quality.ts",
     "questions:validate": "tsx scripts/validate_questions.ts",
+      "questions:wipe": "tsx scripts/wipe_questions.ts",
     "test": "npm run test:web && npm run test:email && npm run test:reset && npm run test:strength && npm run test:sessions && npm run test:deletion && npx tsx scripts/test_mcp_smoke.ts && npm run questions:validate",
     "migrate": "tsx scripts/migrate.ts",
     "db:ping": "tsx scripts/db_ping.ts",
