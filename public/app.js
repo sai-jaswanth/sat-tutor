@@ -24,6 +24,27 @@ const fmt = (s) => s == null || s === '' ? '-' : String(s);
 const pct = (v) => `${Math.round((Number(v) || 0) * 100)}%`;
 const difficultyLabel = (d) => ['','Easy','Easy-Medium','Medium','Medium-Hard','Hard'][Number(d)] || `Level ${d}`;
 const frequencyLabel = (f) => ({very_common:'Very common',common:'Common',moderate:'Moderate',less_common:'Less common',unknown:'Not classified'}[f] || f || 'Not classified');
+function formatDevice(ua) {
+  if (!ua) return 'Unknown Device';
+
+  // Detect Device / OS
+  let device = 'Unknown Device';
+  if (/iPhone/i.test(ua)) device = 'iPhone';
+  else if (/iPad/i.test(ua)) device = 'iPad';
+  else if (/Android/i.test(ua)) device = 'Android Device';
+  else if (/Macintosh|Mac OS X/i.test(ua)) device = 'Mac';
+  else if (/Windows/i.test(ua)) device = 'Windows PC';
+  else if (/Linux/i.test(ua)) device = 'Linux PC';
+
+  // Detect Browser
+  let browser = '';
+  if (/Edg\//i.test(ua)) browser = 'Edge';
+  else if (/Chrome\//i.test(ua)) browser = 'Chrome';
+  else if (/Safari\//i.test(ua)) browser = 'Safari';
+  else if (/Firefox\//i.test(ua)) browser = 'Firefox';
+
+  return browser ? `${device} (${browser})` : device;
+}
 
 let pendingApiRequests = 0;
 
@@ -258,9 +279,9 @@ async function dashboard() {
     </div>
     <div class="card" style="margin-top:16px">
       <div class="sectionHead"><h3>Connected Devices & Active Sessions</h3>${sessions.length > 1 ? `<button class="btn alt" id="revokeAllBtn">Log out all other devices</button>` : ''}</div>
-      <div class="tableWrap"><table class="table"><thead><tr><th>Device / User Agent</th><th>IP Address</th><th>Last Active</th><th>Status</th><th>Action</th></tr></thead><tbody>
+            <div class="tableWrap"><table class="table"><thead><tr><th>Device</th><th>IP Address</th><th>Last Active</th><th>Status</th><th>Action</th></tr></thead><tbody>
         ${sessions.map(s => `<tr>
-          <td><b>${esc(s.userAgent.slice(0,45))}</b></td>
+          <td><b title="${esc(s.userAgent)}">${esc(formatDevice(s.userAgent))}</b></td>
           <td>${esc(s.ipAddress)}</td>
           <td>${new Date(s.lastActiveAt).toLocaleString()}</td>
           <td>${s.isCurrent ? '<span class="pill approvedPill">Current Device</span>' : '<span class="pill statusPill">Active</span>'}</td>
