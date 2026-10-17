@@ -1,104 +1,313 @@
-# SAT Tutor — Multi-user Product Foundation
+<div align="center">
 
-This repository started as a CLI-only SAT tutor MVP using Claude + MCP + SQLite. It now includes a real local web product layer while preserving the original adaptive learning engine.
+# 🎓 SAT TUTOR
 
-## Implemented
+### The AI-powered SAT prep platform that actually *knows* its student.
 
-- Existing MCP servers: student-data, question-bank, grading
-- Deterministic MCQ and numeric/grid-in grading
-- Math verification with mathjs
-- Elo-style per-skill mastery
-- Simplified SM-2 spaced repetition
-- Adaptive next-question selection
-- Multi-user registration and login
-- Opaque HttpOnly session cookies
-- Student-specific profiles and strict server-side data scoping
-- Web dashboard, practice UI, progress page, AI tutor, profile editing
-- Persistent chat sessions/messages, with the AI tutor pooled per session (not respawned per message) and primed with prior turns on resume
-- Diagnostic test, full-length/section timed practice tests with scaled-score estimates
-- Bookmarks, mistake review queue, deterministic (non-AI) weekly study plans
-- Achievements/streaks and a shared daily challenge, all computed from real attempt history
-- Student feedback/bug reports with an admin triage queue
-- Admin dashboard with user search/suspend, question CRUD + approval workflow, feedback triage, and analytics (skill accuracy, difficulty calibration, most-missed questions)
-- Audit logging foundation
-- 1,208-question original bank with an automated validation gate (`npm run questions:validate`) checking for duplicate stems, answer/choice consistency, and metadata completeness
-- PostgreSQL runtime adapter with pooled connections and real transactions
-- PostgreSQL schema in `migrations/001_production_postgres.sql` plus `npm run migrate`
-- Dockerfile and compose definition for deployment packaging
+Practice · Timed Tests · Adaptive Learning · An AI Tutor wired into your data through **MCP**
 
-> **Going public?** Follow [DEPLOY.md](DEPLOY.md) for the full step-by-step guide.
+<br/>
 
-## Run locally with PostgreSQL
+[![Live Demo](https://img.shields.io/badge/🚀_LIVE_DEMO-Try_it_now-00C853?style=for-the-badge)](https://sat-tutor-yio8.onrender.com/)
 
-This version uses PostgreSQL at runtime; SQLite is no longer used by the application.
+<br/>
+
+![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=flat-square&logo=typescript&logoColor=white)
+![Node.js](https://img.shields.io/badge/Node.js-339933?style=flat-square&logo=nodedotjs&logoColor=white)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?style=flat-square&logo=postgresql&logoColor=white)
+![Neon](https://img.shields.io/badge/Neon-00E599?style=flat-square&logo=neon&logoColor=black)
+![Groq](https://img.shields.io/badge/Groq-F55036?style=flat-square&logoColor=white)
+![MCP](https://img.shields.io/badge/Model_Context_Protocol-6E40C9?style=flat-square)
+![Render](https://img.shields.io/badge/Deployed_on-Render-46E3B7?style=flat-square&logo=render&logoColor=black)
+
+<br/>
+
+| 📚 **1,270** questions | 🔌 **3** MCP servers | 🧠 **Elo-style** mastery | 🔐 **Server-side** auth |
+|:---:|:---:|:---:|:---:|
+
+</div>
+
+---
+
+## 📖 Table of Contents
+
+- [Why SAT Tutor?](#-why-sat-tutor)
+- [Feature Overview](#-feature-overview)
+- [The AI Tutor](#-the-ai-tutor)
+- [MCP Architecture](#-mcp-architecture)
+- [Question Bank](#-question-bank)
+- [Learning Engine](#-learning-engine)
+- [Admin Dashboard](#%EF%B8%8F-admin-dashboard)
+- [Security](#-security)
+- [Tech Stack](#%EF%B8%8F-tech-stack)
+- [System Architecture](#%EF%B8%8F-system-architecture)
+- [Getting Started](#-getting-started)
+
+---
+
+## ⚡ Why SAT Tutor?
+
+Most SAT prep tools do one thing: serve you questions. **SAT Tutor** is a complete preparation loop in a single platform:
+
+```
+   Practice  ──▶  Get graded  ──▶  Review mistakes  ──▶  Track mastery
+       ▲                                                       │
+       └────────  Adaptive engine picks what's next  ◀─────────┘
+                                 │
+                    AI Tutor explains anything, any time
+```
+
+Everything a student does feeds back into what they see next, and the AI tutor can see that context too.
+
+---
+
+## 🧩 Feature Overview
+
+| | Feature | What it gives students |
+|---|---|---|
+| 🤖 | **AI Tutor** | Concept explanations, help on the current question, resumable chat sessions |
+| 📝 | **Practice Mode** | Filter by section, domain, skill and difficulty with instant grading |
+| ⏱️ | **Timed Practice Tests** | Real time pressure, submission, results and performance review |
+| 🎯 | **Diagnostic Test** | A baseline of strengths and weaknesses to start from |
+| 🧠 | **Adaptive Learning** | Per-skill mastery, spaced repetition, smart next-question selection |
+| 📊 | **Progress Dashboard** | Accuracy, mastery, difficulty performance, recent activity |
+| ❌ | **Mistake Review** | Revisit missed questions with full explanations |
+| 🔖 | **Bookmarks** | Personal saved questions, scoped per student |
+| 📅 | **Daily Challenge** | A shared daily question that feeds streaks and achievements |
+| 🏆 | **Streaks & Achievements** | Consistency rewards that keep students coming back |
+| 📋 | **Study Planning** | Deterministic plans built from real activity and performance |
+| 🛠️ | **Admin Dashboard** | Users, questions, feedback and analytics in one place |
+
+---
+
+## 🤖 The AI Tutor
+
+Powered by **Groq**, and connected to the app through **Model Context Protocol (MCP)**.
+
+Students can:
+
+- 💬 Ask about any SAT concept and get a clear explanation
+- 🔍 Discuss the exact question they're solving right now
+- ♻️ Continue and resume previous conversations
+- 🎯 Get tutoring shaped by their own learning context
+
+---
+
+## 🔌 MCP Architecture
+
+The tutor doesn't get raw access to everything. Its abilities are split across **three dedicated MCP servers**, each with a single responsibility:
+
+| Server | Responsibility | Exposes |
+|---|---|---|
+| 🧑‍🎓 **Student Data MCP** | Who the student is and how they're doing | Profiles, attempt history, learning progress, performance |
+| 📚 **Question Bank MCP** | What can be asked | Questions, metadata, sections, domains, skills, difficulty |
+| ✅ **Grading MCP** | Whether an answer is right | Answer evaluation, correct/incorrect results, scoring |
+
+This separation keeps responsibilities clean and lets the AI interact with the application only through dedicated, purpose-built tools.
+
+---
+
+## 📚 Question Bank
+
+A structured bank of **1,270 imported questions** (production) spanning **Math** and **Reading & Writing**, each carrying:
+
+`Domain` · `Skill` · `Difficulty` · `Metadata` · `Correct answer` · `Explanation`
+
+**Built-in quality validation** catches:
+
+- ❗ Duplicate question stems
+- ❗ Invalid answers
+- ❗ Inconsistent choices
+- ❗ Missing metadata
+
+---
+
+## 🧠 Learning Engine
+
+The goal: go beyond random questions and let past performance guide future practice.
+
+| Component | Purpose |
+|---|---|
+| **Per-skill mastery** | Know exactly which skills are strong or weak |
+| **Elo-style tracking** | Mastery rises and falls with each attempt |
+| **Spaced repetition** | Resurface material at the right time |
+| **Adaptive selection** | Choose the next question from performance history |
+| **Attempt history** | Every answer stored for later analysis |
+
+### After every practice answer, students get
+
+✅ Immediate grading · 💡 Explanation · ⏱️ Time info · 🔔 Hints · 📈 Mastery update
+
+> **Note on scoring:** practice-test results are a score **estimate**. SAT Tutor does not claim to reproduce an official College Board score conversion.
+
+---
+
+## 🛠️ Admin Dashboard
+
+<details>
+<summary><b>👥 User Management</b></summary>
+
+- Search students
+- View student information
+- Suspend users and manage status
+
+</details>
+
+<details>
+<summary><b>❓ Question Management</b></summary>
+
+- View, create and edit questions
+- Manage question metadata
+- Approve questions
+- Manage the whole question bank
+
+</details>
+
+<details>
+<summary><b>💬 Feedback Management</b></summary>
+
+- View student feedback and bug reports
+- Review reports
+- Update status and triage issues
+
+</details>
+
+<details>
+<summary><b>📈 Analytics</b></summary>
+
+- Skill accuracy
+- Difficulty performance
+- Most-missed questions
+- Student activity
+
+</details>
+
+---
+
+## 🔐 Security
+
+| Layer | Protection |
+|---|---|
+| **Authentication** | Registration, login, password hashing, session-based auth, HttpOnly + SameSite cookies |
+| **Authorization** | Student identity is resolved from the **server-side session**, so the browser can't simply send another student's ID. Admin APIs require an authenticated administrator |
+| **Data protection** | Student-scoped data, environment-variable secrets, database transactions, rate limiting, secure session tokens |
+
+> 🚫 API keys, database credentials and passwords must **never** be committed to the repository.
+
+---
+
+## 🏗️ Tech Stack
+
+<table>
+<tr>
+<td width="25%" valign="top">
+
+**🎨 Frontend**
+- TypeScript
+- Practice interface
+- Timed testing UI
+- Progress dashboard
+- AI Tutor interface
+- Admin dashboard
+
+</td>
+<td width="25%" valign="top">
+
+**⚙️ Backend**
+- Node.js
+- TypeScript
+- HTTP APIs
+- Session-based auth
+
+</td>
+<td width="25%" valign="top">
+
+**🗄️ Data & AI**
+- PostgreSQL
+- Neon (production)
+- Groq API
+- Model Context Protocol
+
+</td>
+<td width="25%" valign="top">
+
+**☁️ Deployment**
+- Render (web app)
+- Neon (database)
+
+</td>
+</tr>
+</table>
+
+<details>
+<summary><b>What the database stores</b></summary>
+
+Users · Student profiles · Questions · Attempts · Scores/results · Mastery data · Bookmarks · Chat sessions · Chat messages · Feedback · Daily challenges · Achievements · Audit information
+
+</details>
+
+---
+
+## 🏛️ System Architecture
+
+```mermaid
+flowchart TD
+    S([🎓 Student]) --> W[SAT Tutor Web App]
+
+    W --> P[📝 Practice]
+    W --> T[⏱️ Mock Tests]
+    W --> A[🤖 AI Tutor]
+
+    A --> G[Groq AI]
+    G --> M{{MCP Layer}}
+
+    M --> SD[🧑‍🎓 Student Data MCP]
+    M --> QB[📚 Question Bank MCP]
+    M --> GR[✅ Grading MCP]
+
+    P --> DB[(Neon PostgreSQL)]
+    T --> DB
+    SD --> DB
+    QB --> DB
+    GR --> DB
+
+    style S fill:#6E40C9,color:#fff
+    style M fill:#F55036,color:#fff
+    style DB fill:#00E599,color:#000
+```
+
+---
+
+## 🚀 Getting Started
+
+> ⚠️ Adjust script names and variables below to match your project.
 
 ```bash
+# 1. Clone
+git clone <your-repo-url>
+cd sat-tutor
+
+# 2. Install
 npm install
-npm run migrate
-npm run questions:import-json -- path/to/questions.json
-npm run admin:create -- admin@example.com StrongPassword123 "Admin"
-npm run web
+
+# 3. Configure environment
+cp .env.example .env
+#   DATABASE_URL=...   (PostgreSQL / Neon connection string)
+#   GROQ_API_KEY=...
+#   SESSION_SECRET=...
+
+# 4. Run
+npm run dev
 ```
 
-The JSON import is optional and adds questions without clearing existing student data. Omit it if the database already has the question bank you want. Open `http://localhost:3000`.
+---
 
-Production startup applies the schema and creates the configured admin account; it does not seed questions. Import a fixed question JSON with `npm run questions:import-json -- path/to/questions.json` to add without removing existing data, or use `npm run questions:replace-json -- path/to/questions.json` to replace the bank. Replacement clears question-linked practice history but preserves accounts. Automatic question seeding is disabled.
+<div align="center">
 
-For local PostgreSQL, the repository includes a Docker Compose service:
+### 🌐 [**Launch SAT Tutor →**](https://sat-tutor-yio8.onrender.com/)
 
-```bash
-docker compose up -d postgres
-```
+Built with **Groq · MCP · PostgreSQL · TypeScript**
 
-Then use the default `.env.example` connection string, or point `DATABASE_URL` at your own PostgreSQL instance.
+*Practice smarter. Learn faster. Score higher.*
 
-Useful database checks:
-
-```bash
-npm run db:ping
-npm run questions:count
-npm run questions:validate
-```
-
-The AI Tutor page requires:
-
-```bash
-GROQ_API_KEY=gsk_...
-```
-
-Windows PowerShell:
-
-```powershell
-$env:GROQ_API_KEY="gsk_..."
-```
-
-## Security notes
-
-- Passwords are salted PBKDF2 hashes using Node's crypto module.
-- Sessions use random opaque tokens in HttpOnly, SameSite=Strict cookies.
-- Student IDs are resolved server-side from the authenticated user; the browser cannot choose another student's ID for normal APIs.
-- Admin APIs require an authenticated user with `role = admin`.
-- Grading is deterministic and is not delegated to Claude.
-- Attempt + mastery writes run in one database transaction.
-- Production should add HTTPS, managed secrets, database backups, stronger centralized rate limiting, monitoring, and a managed authentication service before public launch.
-
-## Current limitations
-
-This is a substantial local/public-beta foundation, not a claim of completed enterprise SaaS infrastructure. The following still require external services or another implementation pass:
-
-- Hosted PostgreSQL cutover
-- Managed authentication/email verification
-- Cloud deployment and domain/DNS
-- Centralized rate limiting at scale
-- Production observability/alerting
-- Payment/subscription system
-- Question generation + human review workflow
-- Notes/PDF/video ingestion and RAG
-- A full multi-module, official-length exam simulator with an official score concordance (the current practice tests are single-module, timed sets with a simple linear scaled-score *estimate*, not an official conversion)
-
-See `docs/` for the implementation and migration details.
-
-
-## Bulk question bank
-
-Run `npm run seed:bulk` to add 1,200 original SAT-style questions (800 Math + 400 Reading & Writing) across the official content-domain/skill structure and difficulty levels, then `npm run questions:validate` to check them for reliability issues (duplicate stems, broken answers/choices, missing metadata). See `docs/question-bank.md`. Prior-exam occurrence counts are only populated from verified source data; original generated items are not presented as real exam questions.
+</div>
