@@ -783,7 +783,7 @@ async function testsHubView(){
     <div class="card"><h3>Math only</h3><p class="muted">44 Math questions. Two 35-minute modules with calculator access.</p><button class="btn btnPrimary" data-start-test="math">Start</button></div>
     <div class="card"><h3>Reading &amp; Writing only</h3><p class="muted">54 Reading &amp; Writing questions across two 32-minute modules.</p><button class="btn btnPrimary" data-start-test="reading_writing">Start</button></div>
   </div>
-  <div class="card" style="margin-top:16px"><div class="sectionHead"><h3>History</h3></div><div class="tableWrap"><table class="table"><thead><tr><th>Mode</th><th>Status</th><th>Score</th><th>Date</th></tr></thead><tbody>${history.map(t=>`<tr><td>${esc(t.mode)}</td><td>${esc(t.status)}</td><td>${t.score?(t.score.composite||Object.values(t.score.byModule)[0].scaled):'—'}</td><td>${new Date(t.startedAt).toLocaleDateString()}</td></tr>`).join('')||'<tr><td colspan="4" class="muted">No tests taken yet.</td></tr>'}</tbody></table></div></div>`;
+  <div class="card" style="margin-top:16px"><div class="sectionHead"><h3>History</h3></div><div class="tableWrap"><table class="table"><thead><tr><th>Mode</th><th>Status</th><th>Score</th><th>Date</th></tr></thead><tbody>${history.map(t=>`<tr><td>${esc(t.mode)}</td><td>${esc(t.status)}</td><td>${t.score ? (t.score.composite || Object.values(t.score.byModule)[0]?.scaled || '—') : '—'}</td><td>${new Date(t.startedAt).toLocaleDateString()}</td></tr>`).join('')||'<tr><td colspan="4" class="muted">No tests taken yet.</td></tr>'}</tbody></table></div></div>`;
 }
 
 let currentTest = null;
