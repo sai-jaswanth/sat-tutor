@@ -992,7 +992,44 @@ function needsGeneratedExplanation(text){
   return !text||/source answer key:|does not include a question-level explanation|generating question-specific/i.test(text);
 }
 
-async function getHint(){try{if(practiceAnswered||practiceHints.length>=3)return;const r=await api('/api/practice/hint',{method:'POST',body:JSON.stringify({question_id:practice.id,level:practiceHints.length+1})});practiceHints.push(r.hint);render();}catch(e){alert(e.message)}}
+async function getHint() {
+  try {
+    if (practiceAnswered || practiceHints.length >= 3) return;
+    const nextLevel = practiceHints.length + 1;
+
+    const hintBtn = document.getElementById('hintBtn');
+    if (hintBtn) {
+      hintBtn.disabled = true;
+      hintBtn.textContent = 'Thinking…';
+    }
+
+    const hintPrompts = [
+      "Give me a gentle Level 1 hint for this question: focus on the key context clue or core relationship without giving away the answer.",
+      "Give me a Level 2 hint for this question: explain the underlying concept, rule, or vocabulary distinction to help narrow down the choices.",
+      "Give me a strong Level 3 hint for this question: guide me through the key deduction or calculation step needed to solve it, without stating the final choice letter or answer."
+    ];
+
+    const res = await api('/api/chat', {
+      method: 'POST',
+      body: JSON.stringify({
+        message: hintPrompts[nextLevel - 1],
+        current_question_id: practice.id,
+        images: []
+      })
+    });
+
+    const aiText = res.reply || 'Could not generate an AI hint right now.';
+    practiceHints.push({ level: nextLevel, text: aiText });
+    render();
+  } catch (e) {
+    alert(e.message);
+    const hintBtn = document.getElementById('hintBtn');
+    if (hintBtn) {
+      hintBtn.disabled = false;
+      hintBtn.textContent = `💡 Hint (${practiceHints.length}/3)`;
+    }
+  }
+}
 async function submitAnswer(answer){if(practiceAnswered)return;if(!answer||!String(answer).trim()){alert('Select an answer or enter a value first.');return;}try{const elapsed=Math.max(1,(performance.now()-practiceStartedAt)/1000);const r=await api('/api/practice/answer',{method:'POST',body:JSON.stringify({question_id:practice.id,student_answer:String(answer),time_seconds:elapsed,hints_used:practiceHints.length})});r.timeSeconds=elapsed;r.hintsUsed=practiceHints.length;const needsExplanation=needsGeneratedExplanation(r.explanation);if(needsExplanation)r.explanation='Generating question-specific explanation…';lastResult=r;practiceAnswered=true;render();if(needsExplanation){try{const generated=await api('/api/question-explanation',{method:'POST',body:JSON.stringify({question_id:practice.id,student_answer:String(answer)})});if(lastResult!==r)return;r.explanation=generated.explanation;render();}catch(error){if(lastResult!==r)return;r.explanation=`Could not generate an explanation right now. ${error.message}`;render();}}}catch(e){alert(e.message)}}
 function startTimer(){const el=document.getElementById('practiceTimer'),fill=document.getElementById('timerBarFill');clearInterval(window.__timer);if(!el||!practiceStartedAt)return;const update=()=>{const sec=Math.floor((performance.now()-practiceStartedAt)/1000);el.textContent=`${String(Math.floor(sec/60)).padStart(2,'0')}:${String(sec%60).padStart(2,'0')}`;if(fill)fill.style.width=`${Math.min(100,(sec/120)*100)}%`;};update();if(!practiceAnswered)window.__timer=setInterval(update,1000);}
 const CHAT_MAX_IMAGES = 3;
